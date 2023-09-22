@@ -1,5 +1,7 @@
 #include <elf.h>
 #include <unistd.h>
+#include <memory>
+#include <vector>
 
 #if INTPTR_MAX == INT32_MAX
 		typedef Elf32_Ehdr Elf_Ehdr;
@@ -29,4 +31,10 @@
 #define ROUND_UP(v, s) ((v + s - 1) & -s)
 #define ROUND_DOWN(v, s) (v & -s)
 
-bool is_elf(Elf_Ehdr* Ehdr);
+bool is_elf(std::unique_ptr<Elf_Ehdr> Ehdr);
+
+static Elf_Shdr* search_shdr(Elf_Ehdr* Ehdr, const char *name);
+
+static void load_file(std::vector<char> &head, size_t* entry);
+
+void execute_elf(std::unique_ptr<std::vector<char>> &&buf, const char* argv[], const char* env[]);
