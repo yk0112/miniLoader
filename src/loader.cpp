@@ -21,7 +21,6 @@ static Elf_Shdr* search_shdr(Elf_Ehdr* Ehdr, const char* name) {
   char* namelist = (char*)Ehdr + Nhdr->sh_offset;
 
   for (int i = 0; i < Ehdr->e_shnum; i++) {
-    std::cout << "find " << namelist + (Shdr + i)->sh_name << std::endl;
     if (!strcmp(namelist + (Shdr + i)->sh_name, name)) {
       return (Shdr + i);
     }
@@ -38,7 +37,12 @@ static func_t load_file(char* head) {
   Elf_Shdr* Shdr;
 
   Ehdr = reinterpret_cast<Elf_Ehdr*>(head);
+  Phdr = reinterpret_cast<Elf_Phdr*>(head + Ehdr->e_phoff);
 
+  for (int i = 0; i < Ehdr->e_phnum; i++) {
+    std::cout << Phdr[i].p_vaddr << "\n";
+  }
+  
   if (!is_elf(Ehdr)) {
     std::cerr << "This file is not ELF format.\n";
     exit(1);
@@ -68,23 +72,24 @@ static func_t load_file(char* head) {
   // 各セグメントをメモリ上に展開
   for (int i = 0; i < Ehdr->e_phnum; i++) {
     std::cout << "program header: " << i << "\n";
-    char* Phdr_addr =
-        reinterpret_cast<char*>(Ehdr) + Ehdr->e_phoff + Ehdr->e_phentsize * i;
-    Phdr = reinterpret_cast<Elf_Phdr*>(Phdr_addr);
+    // char* Phdr_addr =
+    //     reinterpret_cast<char*>(Ehdr) + Ehdr->e_phoff + Ehdr->e_phentsize * i;
+    // Phdr = reinterpret_cast<Elf_Phdr*>(Phdr_addr);
 
-    if (Phdr->p_type == PT_LOAD) {
+    if (Phdr[i].p_type == PT_LOAD) {
       std::cout << "file type: PT_LOAD \n";
       void* map_start = reinterpret_cast<void*>(
-          ROUND_DOWN(Phdr->p_vaddr,
+          ROUND_DOWN(Phdr[i].p_vaddr,
                      PAGE_SIZE));  // ページサイズのアラインメントに従った配置
       int round_down_size = static_cast<int>(
-          Phdr->p_vaddr - reinterpret_cast<intptr_t>(map_start));
-      int map_size = ROUND_UP(Phdr->p_memsz + round_down_size, PAGE_SIZE);
+          Phdr[i].p_vaddr - reinterpret_cast<intptr_t>(map_start));
+          
+      int map_size = ROUND_UP(Phdr[i].p_memsz + round_down_size, PAGE_SIZE);
 
       mmap(base + map_start, map_size, PROT_READ | PROT_WRITE,
            MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
-      memcpy(reinterpret_cast<void*>(base) + Phdr->p_vaddr,
-             Ehdr + Phdr->p_offset, Phdr->p_filesz);
+      memcpy(reinterpret_cast<void*>(base) + Phdr[i].p_vaddr,
+             Ehdr + Phdr[i].p_offset, Phdr[i].p_filesz);
 
       std::cout << "file loaded. \n";
     } else {
@@ -96,7 +101,7 @@ static func_t load_file(char* head) {
   Shdr = search_shdr(Ehdr, ".bss");
   if (Shdr != nullptr) {
     std::cout << "clear BSS section. \n";
-    memset((char*)Shdr->sh_addr, 0, Shdr->sh_size);
+    memset((char*)Shdr->sh_addr + base, 0, Shdr->sh_size);
   }
 }
 

@@ -3,17 +3,17 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-
+#include <memory>
 #include <fstream>
 #include <iostream>
 
 #include "../include/helper.hpp"
 
 static int change_flag(char* head) {
-  Elf_Ehdr* Ehdr;
-  Elf_Phdr* Phdr;
-
-  Ehdr = (Elf_Ehdr*)head;
+  std::unique_ptr<Elf_Ehdr> Ehdr;
+  std::unique_ptr<Elf_Phdr> Phdr;
+  
+  Ehdr.reset(reinterpret_cast<Elf_Ehdr *>(head));
 
   if (!is_elf(Ehdr)) {
     std::cerr << "This file is not ELF format.\n";
@@ -26,8 +26,8 @@ static int change_flag(char* head) {
   }
 
   for (int i = 0; i < Ehdr->e_phnum; i++) {
-    char* Phdr_addr = (char*)Ehdr + Ehdr->e_phoff + Ehdr->e_phentsize * i;
-    Phdr = (Elf_Phdr*)Phdr_addr;
+    char* Phdr_addr = head + Ehdr->e_phoff + Ehdr->e_phentsize * i;
+    Phdr.reset(reinterpret_cast<Elf_Phdr *>(Phdr_addr));
     Phdr->p_flags = PF_X | PF_W | PF_R;
   }
 
