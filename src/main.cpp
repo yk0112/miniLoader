@@ -15,30 +15,31 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-    const char *filename = argv[1];
-    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+  const char *filename = argv[1];
+  std::ifstream file(filename, std::ios::binary | std::ios::ate);
 
-    if (!file) {
-      std::cerr << "Failed to open file: " << filename << std::endl;
-      return 1;
-    }
+  if (!file)
+  {
+    std::cerr << "Failed to open file: " << filename << std::endl;
+    return 1;
+  }
 
-    int size = file.tellg();
+  int size = file.tellg();
 
-    file.seekg(0, std::ios_base::beg);
+  file.seekg(0, std::ios_base::beg);
 
-    auto buf = std::make_unique<std::vector<char>>(size);
+  auto buf = std::make_unique<std::vector<char>>(size);
 
-    file.read(buf->data(), size);
-
-  const char *_argv[] = {
+  file.read(buf->data(), size);
+  
+  char* _argv[] = {
       argv[0],
       "arg1",
       "arg2",
       NULL,
   };
 
-  const char *_env[] = {
+  char* _env[] = {
       "HOME=/tmp",
       NULL,
   };
