@@ -32,19 +32,7 @@ int main(int argc, char *argv[])
 
   file.read(buf->data(), size);
   
-  char* _argv[] = {
-      argv[0],
-      "arg1",
-      "arg2",
-      NULL,
-  };
-
-  char* _env[] = {
-      "HOME=/tmp",
-      NULL,
-  };
-
-  execute_elf(std::move(buf), _argv, _env);
+  execute_elf(std::move(buf), argc, argv);
 
   return 0;
 }

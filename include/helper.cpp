@@ -1,21 +1,15 @@
 #include "helper.hpp"
 #include <fstream>
-#include <elf.h>
 #include <vector>
-#include <type_traits>
 #include <elf.h>
 #include <fcntl.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <iostream>
 #include <vector>
-#include <string>
 #include <memory>
-#include "../include/helper.hpp"
 
-typedef int (*func_t)(int, char **, char **);
 
 bool is_elf(Elf_Ehdr *Ehdr)
 {
@@ -74,11 +68,11 @@ static Elf_Shdr *search_shdr(Elf_Ehdr *Ehdr, const char *name)
   exit(1);
 }
 
-static void load_file(std::vector<char> &head, Elf_Ehdr *Ehdr, size_t *base_addr, size_t *entry)
+static void load_file(std::vector<char> &head, Elf_Ehdr *Ehdr, func *entry)
 {
   Elf_Phdr *Phdr;
   Elf_Shdr *Shdr;
-  func_t f;
+  func f;
 
   if (!is_elf(Ehdr))
   {
@@ -111,7 +105,7 @@ static void load_file(std::vector<char> &head, Elf_Ehdr *Ehdr, size_t *base_addr
   else
     base = 0;
 
-  *entry = base + Ehdr->e_entry;
+  *entry = reinterpret_cast<func>(base + Ehdr->e_entry);
 
   Elf_Phdr *Phdr_tmp;
 
@@ -124,7 +118,7 @@ static void load_file(std::vector<char> &head, Elf_Ehdr *Ehdr, size_t *base_addr
     {
       void *map_start = reinterpret_cast<void *>(
           ROUND_DOWN(Phdr_tmp->p_vaddr,
-                     PAGE_SIZE)); // ページサイズのアラインメントに従った配置
+                     PAGE_SIZE));
 
       auto round_down_size = static_cast<int>(
           Phdr_tmp->p_vaddr - reinterpret_cast<intptr_t>(map_start));
@@ -135,12 +129,6 @@ static void load_file(std::vector<char> &head, Elf_Ehdr *Ehdr, size_t *base_addr
            MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
       memcpy(reinterpret_cast<void *>(base) + Phdr_tmp->p_vaddr,
              head.data() + Phdr_tmp->p_offset, Phdr_tmp->p_filesz);
-
-      void *st = map_start + base;
-      __builtin___clear_cache(st, st + map_size);
-
-      size_t start = reinterpret_cast<size_t>(map_start) + base;
-      *base_addr = std::min(*base_addr, start);
 
       std::cout << "file loaded. \n";
     }
@@ -160,34 +148,24 @@ static void load_file(std::vector<char> &head, Elf_Ehdr *Ehdr, size_t *base_addr
   }
 }
 
+void jump_target(func f, void *stackp)
+{
+  asm volatile("movq %0, %%rsp" ::"m"(stackp));
 
+  __asm__ __volatile__(
+      "jmp *%0\n"
+      :
+      : "r"(f));
+}
 
-void execute_elf(std::unique_ptr<std::vector<char>> &&buf, char *argv[], char *env[])
+void execute_elf(std::unique_ptr<std::vector<char>> &&buf, int argc, char *argv[])
 {
   auto head = std::move(buf);
-  size_t entry = MAX;        // エントリーポイントのアドレス(アラインメント制約を考慮していない？)
-  size_t base = MAX;         // 最初のセグメントのアドレス(アラインメント制約を考慮)
-  size_t interp_entry = MAX; //  動的リンカー用
-  size_t interp_base = MAX;  // 動的リンカー用
-  int argc = 0;
-  int envc = 0;
-  int str_ptr = 0;
-  int stack_ptr = 1;
+  func entry;        // エントリーポイントのアドレス
+  func interp_entry; //  動的リンカのエントリアドレス
   auto Ehdr = reinterpret_cast<Elf_Ehdr *>(head->data());
 
-  while (argv[argc] != nullptr)
-  {
-    ++argc;
-  }
-
-  while (env[envc] != nullptr)
-  {
-    ++envc;
-  }
-
-  std::vector<char *> stack(STACK_SIZE);
-
-  load_file(*head, Ehdr, &base, &entry);
+  load_file(*head, Ehdr, &entry);
 
   Elf_Phdr *interp = search_phdr(Ehdr, 3);
 
@@ -211,29 +189,15 @@ void execute_elf(std::unique_ptr<std::vector<char>> &&buf, char *argv[], char *e
     file.read(file_cont.data(), size);
 
     auto interp_Ehdr = reinterpret_cast<Elf_Ehdr *>(file_cont.data());
-    load_file(file_cont, interp_Ehdr, &interp_base, &interp_entry);
+    load_file(file_cont, interp_Ehdr, &interp_entry);
   }
 
-  for (int i = 0; i < argc; i++)
-  {
-    stack[i] = argv[i];
-    stack_ptr++;
-  }
+  void *stackp = argv - 1;
 
-  Elf_Shdr *init = search_shdr(Ehdr, ".init");             // startup routine
-  Elf_Shdr *init_array = search_shdr(Ehdr, ".init_array"); // Array of function pointer
+  if (interp_entry)
+    jump_target(interp_entry, stackp);
+  else
+    jump_target(entry, stackp);
 
-  func_t st_routine = reinterpret_cast<func_t>(base + init->sh_addr);
-  st_routine(argc, argv, env); // eroor
-  std::cout << "good! \n";
-
-  for (int i = 0; i < init_array->sh_size / PTR_SIZE; i++)
-  {
-    long *gl_ptr = reinterpret_cast<long *>(base + init_array->sh_addr + i * PTR_SIZE);
-    func_t gl_constructor = reinterpret_cast<func_t>(base + *gl_ptr);
-    gl_constructor(argc, argv, env);
-    std::cout << "good!! \n";
-  }
-
-  exit(1);  
+  exit(1);
 }

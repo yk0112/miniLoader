@@ -2,7 +2,6 @@
 #include <unistd.h>
 #include <memory>
 #include <vector>
-#include <limits>
 
 #if INTPTR_MAX == INT32_MAX
 		typedef Elf32_Ehdr Elf_Ehdr;
@@ -28,13 +27,12 @@
 		#error("not found ELF format.")
 #endif
 
-#define STACK_SIZE (8*1024*1024)
-
 #define PAGE_SIZE (sysconf(_SC_PAGESIZE))
 #define MAX std::numeric_limits<size_t>::max();
 #define ROUND_UP(v, s) ((v + s - 1) & -s)
 #define ROUND_DOWN(v, s) (v & -s)
 
+typedef void (*func)();
 
 bool is_elf(Elf_Ehdr *Ehdr);
 
@@ -42,6 +40,6 @@ static Elf_Shdr* search_shdr(Elf_Ehdr* Ehdr, const char *name);
 
 static void load_file(std::vector<char> &head, Elf_Ehdr* Ehdr, size_t *base_addr, size_t* entry);
 
-void execute_elf(std::unique_ptr<std::vector<char>> &&buf,char *argv[] ,char *env[]);
+void execute_elf(std::unique_ptr<std::vector<char>> &&buf, int argc, char *argv[]);
 
-void jump_target(long *init, void *exit_func, void *entry);
+void jump_target(func f, void *stackp);
